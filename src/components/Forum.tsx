@@ -28,9 +28,13 @@ import {
   Search,
   Filter,
   MessageCircle,
-  X
+  X,
+  Flag,
+  ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ModerationModal from './ModerationModal';
+import AdminPanel from './AdminPanel';
 
 enum OperationType {
   CREATE = 'create',
@@ -56,7 +60,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export default function Forum() {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, isAdmin, loading: authLoading } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -64,7 +68,21 @@ export default function Forum() {
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
   const [newComment, setNewComment] = useState('');
-  const [view, setView] = useState<'feed' | 'post' | 'profile'>('feed');
+  const [view, setView] = useState<'feed' | 'post' | 'profile' | 'admin'>('feed');
+  const [authError, setAuthError] = useState<string | null>(null);
+  
+  // Reporting state
+  const [reportingItem, setReportingItem] = useState<{ id: string, type: 'post' | 'comment', title: string } | null>(null);
+
+  const handleSignIn = async () => {
+    setAuthError(null);
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      console.error("Sign in failed:", error);
+      setAuthError(error.message || "AUTHENTICATION_FAILURE");
+    }
+  };
 
   // Load Feed
   useEffect(() => {
@@ -155,6 +173,10 @@ export default function Forum() {
 
   if (authLoading) return <div className="p-20 text-center text-slate-500 font-mono tracking-widest">LOADING__ENVIRONMENT...</div>;
 
+  if (view === 'admin' && isAdmin) {
+    return <AdminPanel onBack={() => setView('feed')} />;
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-12 min-h-screen">
       <div className="flex justify-between items-center mb-12">
@@ -167,6 +189,14 @@ export default function Forum() {
         
         {user ? (
           <div className="flex items-center gap-4">
+            {isAdmin && (
+              <button 
+                onClick={() => setView('admin')}
+                className="flex items-center gap-2 py-2 px-4 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-widest hover:bg-red-500/20 transition-all"
+              >
+                <ShieldAlert size={16} /> Admin
+              </button>
+            )}
             <button 
               onClick={() => setView('profile')}
               className="flex items-center gap-3 py-2 px-4 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-all group"
@@ -179,12 +209,19 @@ export default function Forum() {
             </button>
           </div>
         ) : (
-          <button 
-            onClick={signInWithGoogle}
-            className="px-6 py-2 bg-white text-slate-950 text-xs font-bold rounded-full hover:bg-cyan-50 transition-all uppercase tracking-widest"
-          >
-            Sign In to Sync
-          </button>
+          <div className="flex flex-col items-end gap-2">
+            <button 
+              onClick={handleSignIn}
+              className="px-6 py-2 bg-white text-slate-950 text-xs font-bold rounded-full hover:bg-cyan-50 transition-all uppercase tracking-widest"
+            >
+              Sign In to Sync
+            </button>
+            {authError && (
+              <div className="text-[8px] font-mono text-red-400 uppercase tracking-widest">
+                Error: {authError.includes('popup-closed-by-user') ? 'POPUP_CLOSED' : 'ACCESS_DENIED'}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -258,14 +295,24 @@ export default function Forum() {
                         </div>
                       </div>
                     </div>
-                    {user?.uid === post.authorId && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id); }}
-                        className="p-2 text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {user && user.uid !== post.authorId && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setReportingItem({ id: post.id, type: 'post', title: post.title }); }}
+                          className="p-2 text-slate-600 hover:text-red-400 transition-colors"
+                        >
+                          <Flag size={16} />
+                        </button>
+                      )}
+                      {(user?.uid === post.authorId || isAdmin) && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id); }}
+                          className="p-2 text-slate-600 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <h3 className="text-xl font-bold text-white mb-3 uppercase tracking-tight group-hover:text-cyan-400 transition-colors">{post.title}</h3>
                   <p className="text-sm text-slate-400 line-clamp-2 leading-relaxed mb-6 italic">{post.content}</p>
@@ -302,13 +349,23 @@ export default function Forum() {
               <ArrowLeft size={16} /> Return to Feed
             </button>
 
-            <div className="bg-white/5 border border-white/10 rounded-3xl p-10 backdrop-blur-sm mb-8 shadow-2xl">
-              <div className="flex items-center gap-4 mb-8">
-                <img src={selectedPost.authorPhoto} className="w-12 h-12 rounded-xl bg-slate-800" alt="" />
-                <div>
-                  <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-widest">{selectedPost.authorName}</h4>
-                  <p className="text-[10px] text-slate-500 font-mono">{selectedPost.createdAt?.toDate().toLocaleString()}</p>
+            <div className="bg-white/5 border border-white/10 rounded-3xl p-10 backdrop-blur-sm mb-8 shadow-2xl relative">
+              <div className="flex justify-between items-start mb-8">
+                <div className="flex items-center gap-4">
+                  <img src={selectedPost.authorPhoto} className="w-12 h-12 rounded-xl bg-slate-800" alt="" />
+                  <div>
+                    <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-widest">{selectedPost.authorName}</h4>
+                    <p className="text-[10px] text-slate-500 font-mono">{selectedPost.createdAt?.toDate().toLocaleString()}</p>
+                  </div>
                 </div>
+                {user && user.uid !== selectedPost.authorId && (
+                  <button 
+                    onClick={() => setReportingItem({ id: selectedPost.id, type: 'post', title: selectedPost.title })}
+                    className="p-2 text-slate-600 hover:text-red-400 transition-colors"
+                  >
+                    <Flag size={20} />
+                  </button>
+                )}
               </div>
               <h2 className="text-3xl font-extrabold text-white mb-6 uppercase tracking-tight leading-tight">{selectedPost.title}</h2>
               <p className="text-lg text-slate-300 leading-relaxed whitespace-pre-wrap font-light italic border-l-2 border-cyan-500/30 pl-6 py-2">
@@ -325,10 +382,20 @@ export default function Forum() {
               {comments.map((comment) => (
                 <div key={comment.id} className="flex gap-6 group">
                   <img src={comment.authorPhoto} className="w-10 h-10 rounded-lg bg-slate-800 mt-1" alt="" />
-                  <div className="flex-1 bg-white/[0.02] border border-white/5 rounded-2xl p-6 hover:bg-white/[0.04] transition-all">
+                  <div className="flex-1 bg-white/[0.02] border border-white/5 rounded-2xl p-6 hover:bg-white/[0.04] transition-all relative">
                     <div className="flex justify-between items-center mb-3">
                       <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{comment.authorName}</span>
-                      <span className="text-[9px] text-slate-600 font-mono uppercase">{comment.createdAt?.toDate().toLocaleTimeString()}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[9px] text-slate-600 font-mono uppercase">{comment.createdAt?.toDate().toLocaleTimeString()}</span>
+                        {user && user.uid !== comment.authorId && (
+                          <button 
+                            onClick={() => setReportingItem({ id: comment.id, type: 'comment', title: 'Comment by ' + comment.authorName })}
+                            className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <Flag size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className="text-sm text-slate-300 leading-relaxed font-mono opacity-80">{comment.content}</p>
                   </div>
@@ -414,6 +481,14 @@ export default function Forum() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ModerationModal 
+        isOpen={!!reportingItem}
+        onClose={() => setReportingItem(null)}
+        targetId={reportingItem?.id || ''}
+        targetType={reportingItem?.type || 'post'}
+        targetTitle={reportingItem?.title}
+      />
     </div>
   );
 }

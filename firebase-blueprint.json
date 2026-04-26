@@ -41,6 +41,20 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["postId", "content", "authorId", "createdAt"]
+    },
+    "Report": {
+      "title": "Moderation Report",
+      "description": "A report filed against content or a user",
+      "type": "object",
+      "properties": {
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["post", "comment", "user"] },
+        "reason": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "resolved", "dismissed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["targetId", "targetType", "reason", "reporterId", "createdAt"]
     }
   },
   "firestore": {
@@ -55,6 +69,14 @@
     "posts/{postId}/comments/{commentId}": {
       "schema": "Comment",
       "description": "Comments on a relative post"
+    },
+    "reports/{reportId}": {
+      "schema": "Report",
+      "description": "Moderation flags and reports"
+    },
+    "admins/{userId}": {
+      "schema": "object",
+      "description": "Admin privileges registry"
     }
   }
 }

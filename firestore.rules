@@ -11,6 +11,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -25,6 +29,28 @@ service cloud.firestore {
 
     function existing() {
       return resource.data;
+    }
+
+    // --- Admin ---
+    match /admins/{userId} {
+      allow read: if isAdmin();
+    }
+
+    // --- Reports ---
+    function isValidReport(data) {
+      return data.targetId is string && data.targetId.size() > 0
+          && data.targetType in ['post', 'comment', 'user']
+          && data.reason is string && data.reason.size() > 0 && data.reason.size() <= 1000
+          && data.reporterId == request.auth.uid
+          && data.status == 'pending'
+          && data.createdAt == request.time;
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && isValidReport(incoming()) && isValidId(reportId);
+      allow update: if isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin();
     }
 
     // --- User Profiles ---
@@ -60,7 +86,7 @@ service cloud.firestore {
         // Anyone can increment comment count (simplified for this demo, ideally use a function)
         (incoming().diff(existing()).affectedKeys().hasOnly(['commentCount']))
       );
-      allow delete: if isOwner(existing().authorId);
+      allow delete: if isOwner(existing().authorId) || isAdmin();
       
       // Comments Subcollection
       match /comments/{commentId} {
@@ -74,7 +100,7 @@ service cloud.firestore {
         allow read: if true;
         allow create: if isSignedIn() && isValidComment(incoming()) && isValidId(commentId);
         allow update: if isOwner(existing().authorId) && incoming().diff(existing()).affectedKeys().hasOnly(['content']) && isValidComment(incoming());
-        allow delete: if isOwner(existing().authorId);
+        allow delete: if isOwner(existing().authorId) || isAdmin();
       }
     }
   }

@@ -7,40 +7,56 @@ import { UserProfile } from '../types';
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
-      if (firebaseUser) {
-        const profileRef = doc(db, 'users', firebaseUser.uid);
-        const profileSnap = await getDoc(profileRef);
-        
-        if (profileSnap.exists()) {
-          setProfile({ id: profileSnap.id, ...profileSnap.data() } as UserProfile);
+      try {
+        if (firebaseUser) {
+          setUser(firebaseUser);
+          
+          // Check for Admin status concurrently
+          const adminRef = doc(db, 'admins', firebaseUser.uid);
+          getDoc(adminRef).then(adminSnap => {
+            setIsAdmin(adminSnap.exists());
+          }).catch(err => console.error("Admin check failed:", err));
+
+          const profileRef = doc(db, 'users', firebaseUser.uid);
+          const profileSnap = await getDoc(profileRef);
+          
+          if (profileSnap.exists()) {
+            setProfile({ id: profileSnap.id, ...profileSnap.data() } as UserProfile);
+          } else {
+            // Create initial profile
+            const newProfile = {
+              displayName: firebaseUser.displayName || 'Anonymous',
+              photoURL: firebaseUser.photoURL || '',
+              bio: '',
+              createdAt: serverTimestamp()
+            };
+            try {
+              await setDoc(profileRef, newProfile);
+              // Use local data for immediate feedback since serverTimestamp isn't a date yet
+              setProfile({ id: firebaseUser.uid, ...newProfile, createdAt: { toDate: () => new Date() } } as any);
+            } catch (err) {
+              console.error("Profile creation failed:", err);
+            }
+          }
         } else {
-          // Create initial profile
-          const newProfile = {
-            displayName: firebaseUser.displayName || 'Anonymous',
-            photoURL: firebaseUser.photoURL || '',
-            bio: '',
-            createdAt: serverTimestamp()
-          };
-          await setDoc(profileRef, newProfile);
-          // Snapshot again to get the data with serverTimestamp maybe? 
-          // Actually profile will be fetched on next change or manually set
-          setProfile({ id: firebaseUser.uid, ...newProfile } as any);
+          setUser(null);
+          setProfile(null);
+          setIsAdmin(false);
         }
-      } else {
-        setProfile(null);
+      } catch (error) {
+        console.error("Auth state change error:", error);
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  return { user, profile, loading };
+  return { user, profile, isAdmin, loading };
 }

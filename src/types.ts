@@ -29,3 +29,13 @@ export interface Comment {
   authorPhoto?: string;
   createdAt: Timestamp;
 }
+
+export interface Report {
+  id: string;
+  targetId: string;
+  targetType: 'post' | 'comment' | 'user';
+  reason: string;
+  reporterId: string;
+  status: 'pending' | 'resolved' | 'dismissed';
+  createdAt: Timestamp;
+}
