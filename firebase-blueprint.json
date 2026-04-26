@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["displayName", "createdAt"]
+    },
+    "Post": {
+      "title": "Forum Post",
+      "description": "A discussion topic in the community forum",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "commentCount": { "type": "number" }
+      },
+      "required": ["title", "content", "authorId", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "A reply to a forum post",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "content", "authorId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Global user profiles"
+    },
+    "posts/{postId}": {
+      "schema": "Post",
+      "description": "Community discussion posts"
+    },
+    "posts/{postId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments on a relative post"
+    }
+  }
+}
